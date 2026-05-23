@@ -1,10 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Special+Elite&family=Share+Tech+Mono&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
     body {
-        @apply bg-[#1a1a2e] text-[#e8d5c4] font-['Nunito'] overflow-hidden;
+        @apply overflow-hidden;
+        background-color: #080808;
+        color: #f5f0e8;
+        font-family: 'Special Elite', cursive;
+        cursor: default;
+    }
+
+    * {
+        cursor: inherit;
+    }
+
+    input,
+    textarea {
+        cursor: text;
+    }
+
+    button,
+    [role="button"] {
+        cursor: pointer;
     }
 }
 
@@ -19,116 +39,20 @@
     }
 }
 
-/* Custom animations */
-@keyframes sway {
-
-    0%,
-    100% {
-        transform: rotate(-5deg);
-    }
-
-    50% {
-        transform: rotate(5deg);
-    }
-}
-
-.animate-sway {
-    animation: sway 2s ease-in-out infinite;
-}
-
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(6px) scale(0.98);
-    }
-
-    to {
-        opacity: 1;
-        transform: none;
-    }
-}
-
-.animate-fadeInUp {
-    animation: fadeInUp 0.25s ease;
-}
-
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.94) translateY(-4px);
-    }
-
-    to {
-        opacity: 1;
-        transform: none;
-    }
-}
-
-.animate-fadeIn {
-    animation: fadeIn 0.2s ease;
-}
-
-@keyframes spin-slow {
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.animate-spin-slow {
-    animation: spin-slow 4s linear infinite;
-}
-
-@keyframes eq1 {
-    from {
-        height: 2px;
-    }
-
-    to {
-        height: 14px;
-    }
-}
-
-.animate-eq1 {
-    animation: eq1 0.7s ease-in-out infinite alternate;
-}
-
-.animate-eq2 {
-    animation: eq1 0.7s ease-in-out infinite alternate 0.18s;
-}
-
-.animate-eq3 {
-    animation: eq1 0.7s ease-in-out infinite alternate 0.34s;
-}
-
-.animate-eq4 {
-    animation: eq1 0.7s ease-in-out infinite alternate 0.1s;
-}
-
-/* Stars background (from original) */
-.stars {
+/* Optional scanline overlay for the game canvas */
+#game-container::after {
+    content: '';
     position: absolute;
     inset: 0;
+    background: repeating-linear-gradient(0deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 0, 0, 0.07) 2px,
+            rgba(0, 0, 0, 0.07) 4px);
     pointer-events: none;
+    z-index: 1;
 }
 
-.star {
-    position: absolute;
-    border-radius: 50%;
-    background: white;
-    opacity: 0;
-    animation: twinkle var(--dur, 3s) ease-in-out infinite var(--delay, 0s);
-}
-
-@keyframes twinkle {
-
-    0%,
-    100% {
-        opacity: 0;
-        transform: scale(0.5);
-    }
-
-    50% {
-        opacity: var(--op, 0.6);
-        transform: scale(1);
-    }
+#game-container {
+    position: relative;
 }

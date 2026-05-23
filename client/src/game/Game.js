@@ -1,3 +1,4 @@
+// client/src/game/Game.js
 import Phaser from "phaser";
 import GameScene from "./GameScene";
 
@@ -7,7 +8,7 @@ export function initGame(parentId) {
         parent: parentId,
         width: window.innerWidth,
         height: window.innerHeight,
-        backgroundColor: "#1a1a2e",
+        backgroundColor: "#080808",
         scene: GameScene,
         fps: { target: 60 },
     });

@@ -12,7 +12,6 @@ function App() {
 
   useEffect(() => {
     const onRoomJoined = (data) => {
-      // Store room data so GameScene can pick it up after Phaser finishes booting.
       window.__pendingRoomData = data;
       setRoomCode(data.code);
       setPlayerCount(data.players.length);
@@ -32,11 +31,22 @@ function App() {
     socket.on("player_left", onPlayerLeft);
     socket.on("left_room", onLeftRoom);
 
+    // Optional: reconnect handler to force reset
+    const onReconnect = () => {
+      setInGame(false);
+      setRoomCode("");
+      setPlayerCount(0);
+      // Optionally reload page for clean slate
+      // window.location.reload();
+    };
+    socket.io?.on("reconnect", onReconnect);
+
     return () => {
       socket.off("room_joined", onRoomJoined);
       socket.off("player_joined", onPlayerJoined);
       socket.off("player_left", onPlayerLeft);
       socket.off("left_room", onLeftRoom);
+      socket.io?.off("reconnect", onReconnect);
     };
   }, []);
 
