@@ -31,13 +31,10 @@ function App() {
     socket.on("player_left", onPlayerLeft);
     socket.on("left_room", onLeftRoom);
 
-    // Optional: reconnect handler to force reset
     const onReconnect = () => {
       setInGame(false);
       setRoomCode("");
       setPlayerCount(0);
-      // Optionally reload page for clean slate
-      // window.location.reload();
     };
     socket.io?.on("reconnect", onReconnect);
 

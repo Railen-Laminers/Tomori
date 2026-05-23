@@ -6,16 +6,15 @@ const DEPTH = {
     BODY: 10, LABEL: 11, BUBBLE: 20, ZONE_LABEL: 30,
 };
 
-// Warm, cozy living room palette
 const C = {
-    BG: 0x1e1b1a,        // dark warm brown
+    BG: 0x1e1b1a,
     WALL: 0x2c2827,
     FLOOR: 0x3a2e2a,
     CARPET: 0x5c3e3a,
     WOOD: 0x4a3228,
-    LIGHT: 0xf5d5b8,     // warm light
+    LIGHT: 0xf5d5b8,
     WHITE: 0xfef0e0,
-    ACCENT: 0xc97e5a,    // terracotta / rust
+    ACCENT: 0xc97e5a,
     LAMP_GLOW: 0xffcc88,
 };
 
@@ -44,6 +43,14 @@ export default class GameScene extends Phaser.Scene {
         this.isSitting = false;
         this.hoverZone = null;
         this.dustMotes = [];
+
+        // Bind handlers so we can remove them individually
+        this.onPlayerJoined = this.onPlayerJoined.bind(this);
+        this.onPlayerMoved = this.onPlayerMoved.bind(this);
+        this.onPlayerLeft = this.onPlayerLeft.bind(this);
+        this.onChatMessage = this.onChatMessage.bind(this);
+        this.onLeftRoom = this.onLeftRoom.bind(this);
+        this.onRoomJoined = this.onRoomJoined.bind(this);
     }
 
     create() {
@@ -52,12 +59,12 @@ export default class GameScene extends Phaser.Scene {
 
         this.input.on('pointerdown', this.onPointerDown, this);
 
-        socket.on('player_joined', this.onPlayerJoined.bind(this));
-        socket.on('player_moved', this.onPlayerMoved.bind(this));
-        socket.on('player_left', this.onPlayerLeft.bind(this));
-        socket.on('chat_message', this.onChatMessage.bind(this));
-        socket.on('left_room', this.onLeftRoom.bind(this));
-        socket.on('room_joined', this.onRoomJoined.bind(this));
+        socket.on('player_joined', this.onPlayerJoined);
+        socket.on('player_moved', this.onPlayerMoved);
+        socket.on('player_left', this.onPlayerLeft);
+        socket.on('chat_message', this.onChatMessage);
+        socket.on('left_room', this.onLeftRoom);
+        socket.on('room_joined', this.onRoomJoined);
 
         if (window.__pendingRoomData) {
             this.onRoomJoined(window.__pendingRoomData);
@@ -84,7 +91,6 @@ export default class GameScene extends Phaser.Scene {
         }
         if (zone) this.zoneLabel.setPosition(ptr.x + 14, ptr.y - 14);
 
-        // Movement
         if (this.myId && this.players[this.myId] && !this.isSitting && !this.isChatFocused() && this.moveTarget) {
             const me = this.players[this.myId];
             const dx = this.moveTarget.x - me.x;
@@ -110,17 +116,15 @@ export default class GameScene extends Phaser.Scene {
         return active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
     }
 
-    // ---------- Living Room World Drawing ----------
+    // ---------- World drawing (unchanged) ----------
     buildWorld() {
         this.worldGfx = this.add.graphics().setDepth(DEPTH.WORLD);
         const W = this.sys.game.config.width;
         const H = this.sys.game.config.height;
 
-        // Wall color
         this.worldGfx.fillStyle(C.WALL);
         this.worldGfx.fillRect(0, 0, W, H);
 
-        // Floor (wooden planks)
         this.worldGfx.fillStyle(C.FLOOR);
         this.worldGfx.fillRect(0, 130, W, H - 130);
         this.worldGfx.lineStyle(1, 0x2a221f, 0.5);
@@ -131,17 +135,14 @@ export default class GameScene extends Phaser.Scene {
             this.worldGfx.strokePath();
         }
 
-        // Area rug
         this.worldGfx.fillStyle(C.CARPET, 0.7);
         this.worldGfx.fillRoundedRect(200, 300, 500, 300, 20);
         this.worldGfx.lineStyle(1, C.ACCENT, 0.5);
         this.worldGfx.strokeRoundedRect(200, 300, 500, 300, 20);
 
-        // Simple baseboard
         this.worldGfx.fillStyle(C.WOOD);
         this.worldGfx.fillRect(0, 125, W, 8);
 
-        // Draw furniture
         this.drawSofa(300, 340);
         this.drawArmchair(620, 240);
         this.drawFloorCushion(860, 420);
@@ -150,7 +151,6 @@ export default class GameScene extends Phaser.Scene {
         this.drawFloorLamp(155, 145);
         this.drawWindowSeat(760, 570);
 
-        // Wall decorations (simple frames)
         this.worldGfx.lineStyle(2, C.ACCENT, 0.7);
         this.worldGfx.strokeRect(150, 60, 80, 60);
         this.worldGfx.strokeRect(W - 250, 60, 80, 60);
@@ -158,7 +158,6 @@ export default class GameScene extends Phaser.Scene {
         this.worldGfx.fillRect(152, 62, 76, 56);
         this.worldGfx.fillRect(W - 248, 62, 76, 56);
 
-        // Window (top right)
         this.worldGfx.fillStyle(C.BG);
         this.worldGfx.fillRect(W - 150, 40, 90, 70);
         this.worldGfx.lineStyle(1, C.LIGHT, 0.4);
@@ -171,7 +170,6 @@ export default class GameScene extends Phaser.Scene {
         this.worldGfx.lineTo(W - 60, 75);
         this.worldGfx.strokePath();
 
-        // Zone label
         this.zoneLabel = this.add.text(0, 0, '', {
             fontSize: '12px',
             fontFamily: "'VT323', monospace",
@@ -181,6 +179,7 @@ export default class GameScene extends Phaser.Scene {
         }).setDepth(DEPTH.ZONE_LABEL).setVisible(false);
     }
 
+    // Furniture drawing methods (unchanged)
     drawSofa(x, y) {
         const g = this.worldGfx;
         g.fillStyle(C.ACCENT);
@@ -190,7 +189,6 @@ export default class GameScene extends Phaser.Scene {
         g.fillRect(x + 43, y + 25, 12, 15);
         g.fillStyle(C.LIGHT, 0.4);
         g.fillRoundedRect(x - 50, y - 15, 100, 40, 10);
-        // Cushion lines
         g.lineStyle(1, C.WOOD, 0.3);
         g.beginPath();
         g.moveTo(x, y - 15);
@@ -225,7 +223,6 @@ export default class GameScene extends Phaser.Scene {
         g.fillRect(x - 35, y - 35, 70, 35);
         g.fillStyle(C.LIGHT, 0.3);
         g.fillRect(x - 33, y - 33, 66, 31);
-        // TV legs
         g.fillRect(x - 20, y + 40, 6, 12);
         g.fillRect(x + 14, y + 40, 6, 12);
     }
@@ -238,7 +235,6 @@ export default class GameScene extends Phaser.Scene {
         for (let i = 0; i < 3; i++) {
             g.fillRect(x - 26, y + 12 + i * 24, 52, 4);
         }
-        // Books (tiny colored rectangles)
         g.fillStyle(C.LIGHT);
         g.fillRect(x - 18, y + 14, 6, 20);
         g.fillStyle(C.CARPET);
@@ -267,7 +263,7 @@ export default class GameScene extends Phaser.Scene {
         g.fillRect(x - 50, y - 23, 100, 11);
     }
 
-    // ---------- Dust motes (gentle floating particles) ----------
+    // Dust motes
     initDust() {
         this.dustGfx = this.add.graphics().setDepth(DEPTH.DUST);
         for (let i = 0; i < 60; i++) {
@@ -297,7 +293,7 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    // ---------- Zones ----------
+    // Zones
     getZoneAt(x, y) {
         for (const z of ZONES) {
             if (x >= z.x - z.w / 2 && x <= z.x + z.w / 2 && y >= z.y - z.h / 2 && y <= z.y + z.h / 2)
@@ -320,7 +316,7 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    // ---------- Players (unchanged logic, only visual tweaks) ----------
+    // Player visuals
     createPlayerVisual(id, data) {
         if (this.PG[id]) return;
         const g = this.add.graphics().setDepth(DEPTH.BODY);
@@ -388,16 +384,20 @@ export default class GameScene extends Phaser.Scene {
         delete this.players[id];
     }
 
-    showChatBubble(id, message) {
+    showChatBubble(id, message, isSystem = false) {
         if (this.PCHAT[id]) this.PCHAT[id].destroy();
         if (this.PCTIMER[id]) clearTimeout(this.PCTIMER[id]);
         const p = this.players[id];
-        if (!p) return;
-        this.PCHAT[id] = this.add.text(p.x, p.y - 50, message, {
+        if (!p && id !== 'system') return;
+        const xPos = id === 'system' ? 400 : p.x;
+        const yPos = id === 'system' ? 100 : p.y - 50;
+        const bgColor = isSystem ? '#4a4a4aee' : '#f5d5b8ee';
+        const textColor = isSystem ? '#f5d5b8' : '#1e1b1a';
+        this.PCHAT[id] = this.add.text(xPos, yPos, message, {
             fontSize: '11px',
             fontFamily: "'VT323', monospace",
-            color: '#1e1b1a',
-            backgroundColor: '#f5d5b8ee',
+            color: textColor,
+            backgroundColor: bgColor,
             padding: { x: 6, y: 3 },
             wordWrap: { width: 150 },
         }).setOrigin(0.5, 1).setDepth(DEPTH.BUBBLE);
@@ -406,7 +406,6 @@ export default class GameScene extends Phaser.Scene {
         }, 5000);
     }
 
-    // ---------- Input ----------
     onPointerDown(ptr) {
         const active = document.activeElement;
         if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur();
@@ -426,7 +425,7 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    // ---------- Socket Handlers ----------
+    // Socket handlers
     onRoomJoined({ code, player, players }) {
         this.myId = socket.id;
         this.myRoom = code;
@@ -451,25 +450,30 @@ export default class GameScene extends Phaser.Scene {
         if (this.PT[id]) this.PT[id] = { x, y };
     }
 
-    onPlayerLeft({ id }) { this.removePlayerVisual(id); }
+    onPlayerLeft({ id }) {
+        this.removePlayerVisual(id);
+    }
 
-    onChatMessage({ id, message }) {
+    onChatMessage({ id, username, message, system }) {
         if (!this.sys.isActive()) return;
+        if (system) return;  // ignore system messages – they are handled by GameUI
         this.showChatBubble(id, message);
     }
 
     onLeftRoom() {
+        // Remove only this scene's handlers
+        socket.off('player_joined', this.onPlayerJoined);
+        socket.off('player_moved', this.onPlayerMoved);
+        socket.off('player_left', this.onPlayerLeft);
+        socket.off('chat_message', this.onChatMessage);
+        socket.off('left_room', this.onLeftRoom);
+        socket.off('room_joined', this.onRoomJoined);
+
         for (const id of Object.keys(this.PG)) this.removePlayerVisual(id);
         this.players = {};
         this.myId = null;
         this.myRoom = null;
         this.moveTarget = null;
         this.isSitting = false;
-        socket.off('player_joined');
-        socket.off('player_moved');
-        socket.off('player_left');
-        socket.off('chat_message');
-        socket.off('left_room');
-        socket.off('room_joined');
     }
 }

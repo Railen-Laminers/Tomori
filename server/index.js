@@ -9,20 +9,19 @@ const io = new Server(server, {
     cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
-// Serve client static files (after building, or proxy in dev)
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../client/dist')));
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, '../client/dist', 'index.html'));
     });
 } else {
-    // For dev, just a placeholder
     app.get('/', (req, res) => res.send('Server running'));
 }
 
 // Global state
 const rooms = new Map();
 const usernames = new Set();
+const usernameToSocket = new Map();
 const socketToRoom = new Map();
 const socketToUser = new Map();
 
@@ -51,16 +50,31 @@ function cleanupRoom(roomCode) {
 io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
+    // ---------- Lobby: set/change username ----------
     socket.on('join_lobby', ({ username }) => {
         const trimmed = username?.trim().slice(0, 20);
         if (!trimmed) return socket.emit('error', { msg: 'Username required' });
-        if (usernames.has(trimmed.toLowerCase())) return socket.emit('error', { msg: 'Username already taken' });
+
+        // Remove old username if this socket had one
+        const oldUsername = socketToUser.get(socket.id);
+        if (oldUsername) {
+            usernames.delete(oldUsername.toLowerCase());
+            usernameToSocket.delete(oldUsername.toLowerCase());
+        }
+
+        // Check if new username is already taken by another socket
+        const existingSocket = usernameToSocket.get(trimmed.toLowerCase());
+        if (existingSocket && existingSocket !== socket.id) {
+            return socket.emit('error', { msg: 'Username already taken' });
+        }
 
         usernames.add(trimmed.toLowerCase());
         socketToUser.set(socket.id, trimmed);
+        usernameToSocket.set(trimmed.toLowerCase(), socket.id);
         socket.emit('lobby_joined', { username: trimmed });
     });
 
+    // ---------- Create room ----------
     socket.on('create_room', () => {
         const username = socketToUser.get(socket.id);
         if (!username) return socket.emit('error', { msg: 'Not in lobby' });
@@ -93,14 +107,19 @@ io.on('connection', (socket) => {
         socket.emit('room_joined', { code, player, players: [player], musicState: rooms.get(code).musicState });
     });
 
+    // ---------- Join room ----------
     socket.on('join_room', ({ code }) => {
         const username = socketToUser.get(socket.id);
         if (!username) return socket.emit('error', { msg: 'Not in lobby' });
-        if (socketToRoom.has(socket.id)) return socket.emit('error', { msg: 'Already in a room' });
+        if (socketToRoom.has(socket.id)) return socket.emit('error', { msg: 'You are already in a room. Leave it first.' });
 
         const upperCode = code?.toUpperCase().trim();
         const room = rooms.get(upperCode);
         if (!room) return socket.emit('error', { msg: 'Room not found' });
+
+        // Check for duplicate username inside this room
+        const existingPlayer = Array.from(room.players.values()).find(p => p.username.toLowerCase() === username.toLowerCase());
+        if (existingPlayer) return socket.emit('error', { msg: 'That username is already taken in this room' });
 
         const color = generateColor();
         const player = {
@@ -122,8 +141,10 @@ io.on('connection', (socket) => {
         const allPlayers = Array.from(room.players.values());
         socket.emit('room_joined', { code: upperCode, player, players: allPlayers, musicState: room.musicState });
         socket.to(upperCode).emit('player_joined', { player });
+        // No system chat message – client will generate it from player_joined
     });
 
+    // ---------- Movement & sit ----------
     socket.on('move', ({ x, y }) => {
         const roomCode = socketToRoom.get(socket.id);
         if (!roomCode) return;
@@ -155,6 +176,7 @@ io.on('connection', (socket) => {
         socket.emit('player_moved', { id: socket.id, x, y, sitting: true, sittingAt: spotId });
     });
 
+    // ---------- Chat ----------
     socket.on('chat', ({ message }) => {
         const roomCode = socketToRoom.get(socket.id);
         if (!roomCode) return;
@@ -162,9 +184,16 @@ io.on('connection', (socket) => {
         if (!player) return;
         const trimmed = message?.trim().slice(0, 120);
         if (!trimmed) return;
-        io.to(roomCode).emit('chat_message', { id: socket.id, username: player.username, message: trimmed, timestamp: Date.now() });
+        io.to(roomCode).emit('chat_message', {
+            id: socket.id,
+            username: player.username,
+            message: trimmed,
+            timestamp: Date.now(),
+            system: false
+        });
     });
 
+    // ---------- Emote & Equip (optional) ----------
     socket.on('emote', ({ emote }) => {
         const roomCode = socketToRoom.get(socket.id);
         if (!roomCode) return;
@@ -185,12 +214,15 @@ io.on('connection', (socket) => {
         io.to(roomCode).emit('player_equipped', { id: socket.id, hat: player.hat, pet: player.pet });
     });
 
+    // ---------- Leave room ----------
     socket.on('leave_room', () => handleLeave(socket));
+
     socket.on('disconnect', () => {
         handleLeave(socket);
         const username = socketToUser.get(socket.id);
         if (username) {
             usernames.delete(username.toLowerCase());
+            usernameToSocket.delete(username.toLowerCase());
             socketToUser.delete(socket.id);
         }
     });
@@ -200,8 +232,10 @@ io.on('connection', (socket) => {
         if (!roomCode) return;
         const room = rooms.get(roomCode);
         if (room) {
+            const player = room.players.get(socket.id);
             room.players.delete(socket.id);
             socket.to(roomCode).emit('player_left', { id: socket.id });
+            // No system chat message – client will generate it from player_left
             cleanupRoom(roomCode);
         }
         socket.leave(roomCode);

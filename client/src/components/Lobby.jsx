@@ -12,7 +12,6 @@ export default function Lobby({ visible }) {
     const canvasRef = useRef(null);
     const prevVisibleRef = useRef(visible);
 
-    // Blinking cursor effect
     useEffect(() => {
         const interval = setInterval(() => {
             setCursorVisible(v => !v);
@@ -20,7 +19,6 @@ export default function Lobby({ visible }) {
         return () => clearInterval(interval);
     }, []);
 
-    // Reset lobby state when it becomes visible after being hidden
     useEffect(() => {
         if (visible && !prevVisibleRef.current) {
             setRoomCode("");
@@ -30,7 +28,7 @@ export default function Lobby({ visible }) {
         prevVisibleRef.current = visible;
     }, [visible]);
 
-    // Particle background animation (unchanged)
+    // Particle background (same as before)
     useEffect(() => {
         if (!visible) return;
         const canvas = canvasRef.current;
@@ -103,7 +101,6 @@ export default function Lobby({ visible }) {
         };
     }, [visible]);
 
-    // Socket event handlers
     useEffect(() => {
         const onLobbyJoined = () => {
             setIsSubmitting(false);
@@ -173,13 +170,11 @@ export default function Lobby({ visible }) {
             <canvas ref={canvasRef} className="fixed inset-0 w-full h-full pointer-events-none z-0" style={{ opacity: 0.6 }} />
             <div className="fixed inset-0 bg-[#050505]/80 backdrop-blur-[2px] flex items-center justify-center z-50 font-special overflow-hidden">
                 <div className="relative z-10 w-[460px] max-w-[90vw] bg-[#0c0c0c] border border-[#d4a843]/30 shadow-2xl shadow-black/50 p-8 animate-fadeUp">
-                    {/* decorative corner brackets */}
                     <div className="absolute w-5 h-5 border-[#d4a843]/40 border-t-2 border-l-2 -top-px -left-px" />
                     <div className="absolute w-5 h-5 border-[#d4a843]/40 border-t-2 border-r-2 -top-px -right-px" />
                     <div className="absolute w-5 h-5 border-[#d4a843]/40 border-b-2 border-l-2 -bottom-px -left-px" />
                     <div className="absolute w-5 h-5 border-[#d4a843]/40 border-b-2 border-r-2 -bottom-px -right-px" />
 
-                    {/* glitchy title line */}
                     <div className="relative">
                         <h1 className="font-vt323 text-5xl text-[#d4a843] tracking-wider text-center animate-titleFlicker">
                             <span className="relative inline-block">
@@ -192,7 +187,6 @@ export default function Lobby({ visible }) {
 
                     <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
 
-                    {/* step indicators */}
                     <div className="flex gap-3 justify-center mb-6">
                         {["IDENTITY", "ACCESS"].map((label, idx) => (
                             <div key={idx} className="flex items-center gap-2">
@@ -254,7 +248,6 @@ export default function Lobby({ visible }) {
 
                     {step === "room" && (
                         <div className="animate-fadeUp">
-                            {/* Back button to identity */}
                             <div className="flex justify-start mb-4">
                                 <button
                                     onClick={() => {
@@ -277,7 +270,7 @@ export default function Lobby({ visible }) {
                                 {isSubmitting ? (
                                     <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-[#d4a843] rounded-full animate-spin" />
                                 ) : (
-                                    "✦ CREATE NEW ROOM"
+                                    "CREATE NEW ROOM"
                                 )}
                             </button>
 
