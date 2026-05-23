@@ -50,24 +50,34 @@ function cleanupRoom(roomCode) {
 io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
-    // ---------- Lobby: set/change username ----------
+    // ---------- Lobby: set/change username (FIXED) ----------
     socket.on('join_lobby', ({ username }) => {
         const trimmed = username?.trim().slice(0, 20);
         if (!trimmed) return socket.emit('error', { msg: 'Username required' });
 
-        // Remove old username if this socket had one
+        // Remove any existing mapping for this socket (if it already had a username)
         const oldUsername = socketToUser.get(socket.id);
         if (oldUsername) {
             usernames.delete(oldUsername.toLowerCase());
             usernameToSocket.delete(oldUsername.toLowerCase());
         }
 
-        // Check if new username is already taken by another socket
-        const existingSocket = usernameToSocket.get(trimmed.toLowerCase());
-        if (existingSocket && existingSocket !== socket.id) {
-            return socket.emit('error', { msg: 'Username already taken' });
+        // Check if the desired username is already taken by another socket
+        const existingSocketId = usernameToSocket.get(trimmed.toLowerCase());
+        if (existingSocketId && existingSocketId !== socket.id) {
+            // Verify if the existing socket is still connected
+            const existingSocket = io.sockets.sockets.get(existingSocketId);
+            if (!existingSocket) {
+                // Stale mapping – clean it up
+                usernames.delete(trimmed.toLowerCase());
+                usernameToSocket.delete(trimmed.toLowerCase());
+            } else {
+                // Active socket holds the username – refuse
+                return socket.emit('error', { msg: 'Username already taken' });
+            }
         }
 
+        // Assign username to this socket
         usernames.add(trimmed.toLowerCase());
         socketToUser.set(socket.id, trimmed);
         usernameToSocket.set(trimmed.toLowerCase(), socket.id);
@@ -141,7 +151,6 @@ io.on('connection', (socket) => {
         const allPlayers = Array.from(room.players.values());
         socket.emit('room_joined', { code: upperCode, player, players: allPlayers, musicState: room.musicState });
         socket.to(upperCode).emit('player_joined', { player });
-        // No system chat message – client will generate it from player_joined
     });
 
     // ---------- Movement & sit ----------
@@ -193,7 +202,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ---------- Emote & Equip (optional) ----------
+    // ---------- Emote & Equip ----------
     socket.on('emote', ({ emote }) => {
         const roomCode = socketToRoom.get(socket.id);
         if (!roomCode) return;
@@ -235,7 +244,6 @@ io.on('connection', (socket) => {
             const player = room.players.get(socket.id);
             room.players.delete(socket.id);
             socket.to(roomCode).emit('player_left', { id: socket.id });
-            // No system chat message – client will generate it from player_left
             cleanupRoom(roomCode);
         }
         socket.leave(roomCode);
