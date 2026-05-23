@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    body {
+        @apply bg-[#1a1a2e] text-[#e8d5c4] font-['Nunito'] overflow-hidden;
+    }
+}
+
+@layer utilities {
+    .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+    }
+
+    .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+}
+
+/* Custom animations */
+@keyframes sway {
+
+    0%,
+    100% {
+        transform: rotate(-5deg);
+    }
+
+    50% {
+        transform: rotate(5deg);
+    }
+}
+
+.animate-sway {
+    animation: sway 2s ease-in-out infinite;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.animate-fadeInUp {
+    animation: fadeInUp 0.25s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.94) translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.animate-fadeIn {
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes spin-slow {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin-slow {
+    animation: spin-slow 4s linear infinite;
+}
+
+@keyframes eq1 {
+    from {
+        height: 2px;
+    }
+
+    to {
+        height: 14px;
+    }
+}
+
+.animate-eq1 {
+    animation: eq1 0.7s ease-in-out infinite alternate;
+}
+
+.animate-eq2 {
+    animation: eq1 0.7s ease-in-out infinite alternate 0.18s;
+}
+
+.animate-eq3 {
+    animation: eq1 0.7s ease-in-out infinite alternate 0.34s;
+}
+
+.animate-eq4 {
+    animation: eq1 0.7s ease-in-out infinite alternate 0.1s;
+}
+
+/* Stars background (from original) */
+.stars {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.star {
+    position: absolute;
+    border-radius: 50%;
+    background: white;
+    opacity: 0;
+    animation: twinkle var(--dur, 3s) ease-in-out infinite var(--delay, 0s);
+}
+
+@keyframes twinkle {
+
+    0%,
+    100% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+
+    50% {
+        opacity: var(--op, 0.6);
+        transform: scale(1);
+    }
+}
