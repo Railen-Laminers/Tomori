@@ -18,18 +18,22 @@ const C = {
     LAMP_GLOW: 0xffcc88,
 };
 
+// Fixed world dimensions – same for all players
+const WORLD_W = 1200;
+const WORLD_H = 800;
+
+// ZONES (no lamp_corner)
 const ZONES = [
     { id: 'sofa', x: 300, y: 340, w: 130, h: 70, label: 'SOFA', sitX: 300, sitY: 370 },
     { id: 'armchair', x: 620, y: 240, w: 90, h: 70, label: 'ARMCHAIR', sitX: 620, sitY: 260 },
     { id: 'cushion', x: 860, y: 420, w: 80, h: 60, label: 'FLOOR CUSHION', sitX: 860, sitY: 440 },
     { id: 'tv_watching', x: 1060, y: 220, w: 100, h: 80, label: 'TV SPOT', sitX: 1060, sitY: 255 },
     { id: 'bookshelf', x: 470, y: 480, w: 70, h: 90, label: 'BOOKSHELF', sitX: 470, sitY: 510 },
-    { id: 'lamp_corner', x: 155, y: 165, w: 50, h: 50, label: 'READING NOOK', sitX: 180, sitY: 195 },
     { id: 'window_bench', x: 760, y: 570, w: 130, h: 60, label: 'WINDOW SEAT', sitX: 820, sitY: 590 },
 ];
 
-const MOVE_SPEED = 3;
-const INTERP = 0.14;
+const MOVE_SPEED = 6;
+const INTERP = 0.2;
 
 export default class GameScene extends Phaser.Scene {
     constructor() {
@@ -43,8 +47,8 @@ export default class GameScene extends Phaser.Scene {
         this.isSitting = false;
         this.hoverZone = null;
         this.dustMotes = [];
+        this.followSprite = null;
 
-        // Bind handlers so we can remove them individually
         this.onPlayerJoined = this.onPlayerJoined.bind(this);
         this.onPlayerMoved = this.onPlayerMoved.bind(this);
         this.onPlayerLeft = this.onPlayerLeft.bind(this);
@@ -54,6 +58,11 @@ export default class GameScene extends Phaser.Scene {
     }
 
     create() {
+        // Set initial bounds (will be expanded by updateCameraOffsets)
+        this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
+        this.updateCameraOffsets();               // center the world
+        this.scale.on('resize', this.updateCameraOffsets, this); // react to screen resize
+
         this.buildWorld();
         this.initDust();
 
@@ -72,24 +81,51 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
+    /**
+     * Centers the 1200x800 world inside the canvas
+     * by expanding camera bounds into the negative area.
+     */
+    updateCameraOffsets() {
+        const canvasWidth = this.sys.game.canvas.width;
+        const canvasHeight = this.sys.game.canvas.height;
+        const offsetX = Math.max(0, (canvasWidth - WORLD_W) / 2);
+        const offsetY = Math.max(0, (canvasHeight - WORLD_H) / 2);
+
+        // Expand camera bounds so it can scroll into the “letterbox” area
+        this.cameras.main.setBounds(
+            -offsetX, -offsetY,
+            WORLD_W + offsetX * 2,
+            WORLD_H + offsetY * 2
+        );
+
+        // If the camera already follows a sprite, restart the follow
+        // to respect the new bounds.
+        if (this.followSprite) {
+            this.cameras.main.startFollow(this.followSprite, true, 0.1, 0.1);
+        } else {
+            // Initial centering (before any player exists)
+            this.cameras.main.setScroll(-offsetX, -offsetY);
+        }
+    }
+
     update() {
         if (!this.myRoom) return;
 
         this.updateDust();
         this.drawZones();
 
-        const ptr = this.input.activePointer;
-        const zone = this.getZoneAt(ptr.x, ptr.y);
+        const worldPtr = this.input.activePointer;
+        const zone = this.getZoneAt(worldPtr.worldX, worldPtr.worldY);
         if (zone && this.hoverZone !== zone.id) {
             this.hoverZone = zone.id;
             this.zoneLabel.setText(zone.label);
-            this.zoneLabel.setPosition(ptr.x + 14, ptr.y - 14);
+            this.zoneLabel.setPosition(worldPtr.worldX + 14, worldPtr.worldY - 14);
             this.zoneLabel.setVisible(true);
         } else if (!zone && this.hoverZone) {
             this.hoverZone = null;
             this.zoneLabel.setVisible(false);
         }
-        if (zone) this.zoneLabel.setPosition(ptr.x + 14, ptr.y - 14);
+        if (zone) this.zoneLabel.setPosition(worldPtr.worldX + 14, worldPtr.worldY - 14);
 
         if (this.myId && this.players[this.myId] && !this.isSitting && !this.isChatFocused() && this.moveTarget) {
             const me = this.players[this.myId];
@@ -97,9 +133,9 @@ export default class GameScene extends Phaser.Scene {
             const dy = this.moveTarget.y - me.y;
             const dist = Math.hypot(dx, dy);
             if (dist > 4) {
-                const spd = Math.min(MOVE_SPEED * 1.8, dist);
-                const nx = Math.max(60, Math.min(window.innerWidth - 60, me.x + (dx / dist) * spd));
-                const ny = Math.max(140, Math.min(window.innerHeight - 90, me.y + (dy / dist) * spd));
+                const spd = Math.min(MOVE_SPEED * 2.2, dist);
+                const nx = Phaser.Math.Clamp(me.x + (dx / dist) * spd, 60, WORLD_W - 60);
+                const ny = Phaser.Math.Clamp(me.y + (dy / dist) * spd, 140, WORLD_H - 90);
                 this.PT[this.myId] = { x: nx, y: ny };
                 socket.emit('move', { x: nx, y: ny });
             } else {
@@ -109,6 +145,11 @@ export default class GameScene extends Phaser.Scene {
         }
 
         for (const id of Object.keys(this.PG)) this.tickPlayer(id);
+
+        if (this.followSprite && this.myId && this.players[this.myId]) {
+            const me = this.players[this.myId];
+            this.followSprite.setPosition(me.x, me.y);
+        }
     }
 
     isChatFocused() {
@@ -116,11 +157,11 @@ export default class GameScene extends Phaser.Scene {
         return active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
     }
 
-    // ---------- World drawing (unchanged) ----------
+    // ---------- World drawing (floor lamp removed) ----------
     buildWorld() {
         this.worldGfx = this.add.graphics().setDepth(DEPTH.WORLD);
-        const W = this.sys.game.config.width;
-        const H = this.sys.game.config.height;
+        const W = WORLD_W;
+        const H = WORLD_H;
 
         this.worldGfx.fillStyle(C.WALL);
         this.worldGfx.fillRect(0, 0, W, H);
@@ -148,7 +189,7 @@ export default class GameScene extends Phaser.Scene {
         this.drawFloorCushion(860, 420);
         this.drawTVStand(1060, 210);
         this.drawBookshelf(470, 460);
-        this.drawFloorLamp(155, 145);
+        // this.drawFloorLamp(155, 145);   // removed
         this.drawWindowSeat(760, 570);
 
         this.worldGfx.lineStyle(2, C.ACCENT, 0.7);
@@ -179,7 +220,6 @@ export default class GameScene extends Phaser.Scene {
         }).setDepth(DEPTH.ZONE_LABEL).setVisible(false);
     }
 
-    // Furniture drawing methods (unchanged)
     drawSofa(x, y) {
         const g = this.worldGfx;
         g.fillStyle(C.ACCENT);
@@ -243,16 +283,6 @@ export default class GameScene extends Phaser.Scene {
         g.fillRect(x + 6, y + 12, 7, 22);
     }
 
-    drawFloorLamp(x, y) {
-        const g = this.worldGfx;
-        g.fillStyle(C.WOOD);
-        g.fillRect(x - 3, y, 6, 55);
-        g.fillStyle(C.LAMP_GLOW, 0.7);
-        g.fillTriangle(x, y - 15, x - 15, y - 35, x + 15, y - 35);
-        g.fillStyle(C.LAMP_GLOW, 0.15);
-        g.fillCircle(x, y - 25, 35);
-    }
-
     drawWindowSeat(x, y) {
         const g = this.worldGfx;
         g.fillStyle(C.WOOD);
@@ -263,13 +293,12 @@ export default class GameScene extends Phaser.Scene {
         g.fillRect(x - 50, y - 23, 100, 11);
     }
 
-    // Dust motes
     initDust() {
         this.dustGfx = this.add.graphics().setDepth(DEPTH.DUST);
         for (let i = 0; i < 60; i++) {
             this.dustMotes.push({
-                x: Math.random() * this.sys.game.config.width,
-                y: Math.random() * this.sys.game.config.height,
+                x: Math.random() * WORLD_W,
+                y: Math.random() * WORLD_H,
                 radius: 1 + Math.random() * 2.5,
                 alpha: 0.1 + Math.random() * 0.2,
                 speedY: 0.2 + Math.random() * 0.5,
@@ -280,20 +309,17 @@ export default class GameScene extends Phaser.Scene {
 
     updateDust() {
         this.dustGfx.clear();
-        const W = this.sys.game.config.width;
-        const H = this.sys.game.config.height;
         for (const d of this.dustMotes) {
             d.x += d.speedX;
             d.y += d.speedY;
-            if (d.y > H + 20) d.y = -20;
-            if (d.x < -20) d.x = W + 20;
-            if (d.x > W + 20) d.x = -20;
+            if (d.y > WORLD_H + 20) d.y = -20;
+            if (d.x < -20) d.x = WORLD_W + 20;
+            if (d.x > WORLD_W + 20) d.x = -20;
             this.dustGfx.fillStyle(C.LIGHT, d.alpha);
             this.dustGfx.fillCircle(d.x, d.y, d.radius);
         }
     }
 
-    // Zones
     getZoneAt(x, y) {
         for (const z of ZONES) {
             if (x >= z.x - z.w / 2 && x <= z.x + z.w / 2 && y >= z.y - z.h / 2 && y <= z.y + z.h / 2)
@@ -316,7 +342,6 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
-    // Player visuals
     createPlayerVisual(id, data) {
         if (this.PG[id]) return;
         const g = this.add.graphics().setDepth(DEPTH.BODY);
@@ -411,7 +436,10 @@ export default class GameScene extends Phaser.Scene {
         if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur();
         if (!this.myId || !this.myRoom) return;
 
-        const zone = this.getZoneAt(ptr.x, ptr.y);
+        const worldX = ptr.worldX;
+        const worldY = ptr.worldY;
+
+        const zone = this.getZoneAt(worldX, worldY);
         if (zone) {
             this.isSitting = true;
             this.moveTarget = null;
@@ -420,22 +448,30 @@ export default class GameScene extends Phaser.Scene {
             if (this.players[this.myId]) this.players[this.myId].sitting = true;
         } else {
             this.isSitting = false;
-            this.moveTarget = { x: ptr.x, y: ptr.y };
+            this.moveTarget = { x: worldX, y: worldY };
             if (this.players[this.myId]) this.players[this.myId].sitting = false;
         }
     }
 
-    // Socket handlers
     onRoomJoined({ code, player, players }) {
         this.myId = socket.id;
         this.myRoom = code;
         this.players = {};
+
         for (const id of Object.keys(this.PG)) this.removePlayerVisual(id);
+
         for (const p of players) {
             this.players[p.id] = { ...p };
             this.createPlayerVisual(p.id, p);
         }
+
         this.PT[this.myId] = { x: player.x, y: player.y };
+
+        if (!this.followSprite) {
+            this.followSprite = this.add.zone(player.x, player.y, 1, 1)
+                .setVisible(false);
+            this.cameras.main.startFollow(this.followSprite, true, 0.1, 0.1);
+        }
     }
 
     onPlayerJoined({ player }) {
@@ -456,12 +492,11 @@ export default class GameScene extends Phaser.Scene {
 
     onChatMessage({ id, username, message, system }) {
         if (!this.sys.isActive()) return;
-        if (system) return;  // ignore system messages – they are handled by GameUI
+        if (system) return;
         this.showChatBubble(id, message);
     }
 
     onLeftRoom() {
-        // Remove only this scene's handlers
         socket.off('player_joined', this.onPlayerJoined);
         socket.off('player_moved', this.onPlayerMoved);
         socket.off('player_left', this.onPlayerLeft);
@@ -475,5 +510,10 @@ export default class GameScene extends Phaser.Scene {
         this.myRoom = null;
         this.moveTarget = null;
         this.isSitting = false;
+
+        if (this.followSprite) {
+            this.followSprite.destroy();
+            this.followSprite = null;
+        }
     }
 }

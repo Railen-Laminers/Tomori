@@ -39,20 +39,10 @@
     }
 }
 
-/* Optional scanline overlay for the game canvas */
-#game-container::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(0deg,
-            transparent,
-            transparent 2px,
-            rgba(0, 0, 0, 0.07) 2px,
-            rgba(0, 0, 0, 0.07) 4px);
-    pointer-events: none;
-    z-index: 1;
-}
-
 #game-container {
+    width: 100%;
+    height: 100%;
     position: relative;
+    overflow: hidden;
+    background: #080808;
 }

@@ -5,12 +5,34 @@ export default function Lobby({ visible }) {
     const [step, setStep] = useState("username");
     const [username, setUsername] = useState("");
     const [roomCode, setRoomCode] = useState("");
-    const [error, setError] = useState("");
+    const [error, setError] = useState("");        // server/global errors (still used for timeouts, etc.)
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cursorVisible, setCursorVisible] = useState(true);
+
+    // Stage‑specific error messages
+    const [nameError, setNameError] = useState("");
+    const [roomCodeError, setRoomCodeError] = useState("");
+
+    // Refs for auto‑hide timeouts
+    const nameErrorTimeoutRef = useRef(null);
+    const roomCodeErrorTimeoutRef = useRef(null);
+
     const inputRef = useRef(null);
     const canvasRef = useRef(null);
     const prevVisibleRef = useRef(visible);
+
+    // Auto‑hide helper
+    const setAutoHideError = (setter, message, timeoutRef) => {
+        // Clear previous timeout for this error type
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        setter(message);
+        if (message) {
+            timeoutRef.current = setTimeout(() => {
+                setter("");
+                timeoutRef.current = null;
+            }, 3000); // 3 seconds
+        }
+    };
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -24,11 +46,16 @@ export default function Lobby({ visible }) {
             setRoomCode("");
             setError("");
             setIsSubmitting(false);
+            // Clear stage errors when lobby reopens
+            setNameError("");
+            setRoomCodeError("");
+            if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
+            if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
         }
         prevVisibleRef.current = visible;
     }, [visible]);
 
-    // Particle background (same as before)
+    // Particle background (unchanged)
     useEffect(() => {
         if (!visible) return;
         const canvas = canvasRef.current;
@@ -109,6 +136,9 @@ export default function Lobby({ visible }) {
         const onError = ({ msg }) => {
             setError(msg);
             setIsSubmitting(false);
+            // Also clear any stage errors when a server error occurs
+            setNameError("");
+            setRoomCodeError("");
         };
         const onDisconnect = () => {
             setError("Connection lost – please refresh the page");
@@ -127,7 +157,14 @@ export default function Lobby({ visible }) {
     }, []);
 
     const handleSetUsername = () => {
-        if (!username.trim()) return setError("a name is required.");
+        // Clear previous name error before validating
+        if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
+        setNameError("");
+
+        if (!username.trim()) {
+            setAutoHideError(setNameError, "⚠ A name is required.", nameErrorTimeoutRef);
+            return;
+        }
         setIsSubmitting(true);
         socket.emit("join_lobby", { username: username.trim() });
     };
@@ -144,7 +181,14 @@ export default function Lobby({ visible }) {
     };
 
     const handleJoinRoom = () => {
-        if (!roomCode.trim()) return setError("enter a room code.");
+        // Clear previous room code error
+        if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
+        setRoomCodeError("");
+
+        if (!roomCode.trim()) {
+            setAutoHideError(setRoomCodeError, "⚠ Enter a room code.", roomCodeErrorTimeoutRef);
+            return;
+        }
         setIsSubmitting(true);
         const timeout = setTimeout(() => {
             if (isSubmitting) {
@@ -160,7 +204,19 @@ export default function Lobby({ visible }) {
         const suffixes = ["walker", "shade", "fox", "byte", "ghost", "rune", "spark", "void", "owl", "moth"];
         const random = `${prefixes[Math.floor(Math.random() * prefixes.length)]}_${suffixes[Math.floor(Math.random() * suffixes.length)]}${Math.floor(Math.random() * 99)}`;
         setUsername(random);
+        // Clear name error when randomizing
+        if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
+        setNameError("");
         if (inputRef.current) inputRef.current.focus();
+    };
+
+    const goBackToIdentity = () => {
+        setStep("username");
+        setRoomCode("");
+        setError("");
+        // Clear room code error when leaving access stage
+        if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
+        setRoomCodeError("");
     };
 
     if (!visible) return null;
@@ -215,7 +271,12 @@ export default function Lobby({ visible }) {
                                     ref={inputRef}
                                     type="text"
                                     value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
+                                    onChange={(e) => {
+                                        setUsername(e.target.value);
+                                        // Clear name error when user starts typing
+                                        if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
+                                        setNameError("");
+                                    }}
                                     onKeyDown={(e) => e.key === "Enter" && !isSubmitting && handleSetUsername()}
                                     className="w-full bg-[#0a0a0a] border border-[#d4a843]/30 text-white font-vt323 text-xl px-4 py-2.5 outline-none focus:border-[#d4a843]/70 transition-all placeholder:text-white/10"
                                     placeholder="anonymous"
@@ -227,6 +288,12 @@ export default function Lobby({ visible }) {
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-[#d4a843]/80 animate-pulse" />
                                 )}
                             </div>
+                            {/* Stage‑specific name error */}
+                            {nameError && (
+                                <div className="font-share text-[11px] text-red-400/90 mt-2 px-2 py-1 bg-red-950/20 border-l-2 border-red-500 animate-fadeIn">
+                                    {nameError}
+                                </div>
+                            )}
                             <button
                                 onClick={handleSetUsername}
                                 disabled={isSubmitting}
@@ -238,7 +305,8 @@ export default function Lobby({ visible }) {
                                     "► CONNECT"
                                 )}
                             </button>
-                            {error && (
+                            {/* Global/server errors (optional, keep for timeouts etc.) */}
+                            {error && step === "username" && (
                                 <div className="font-share text-[11px] text-red-400/90 mt-3 text-center bg-red-950/20 py-2 border-l-2 border-red-500">
                                     ⚠ {error}
                                 </div>
@@ -250,11 +318,7 @@ export default function Lobby({ visible }) {
                         <div className="animate-fadeUp">
                             <div className="flex justify-start mb-4">
                                 <button
-                                    onClick={() => {
-                                        setStep("username");
-                                        setRoomCode("");
-                                        setError("");
-                                    }}
+                                    onClick={goBackToIdentity}
                                     disabled={isSubmitting}
                                     className="text-white/40 hover:text-[#d4a843] text-[10px] font-share tracking-wider uppercase transition-all disabled:opacity-30"
                                 >
@@ -287,7 +351,12 @@ export default function Lobby({ visible }) {
                                 <input
                                     type="text"
                                     value={roomCode}
-                                    onChange={(e) => setRoomCode(e.target.value.toUpperCase().slice(0, 5))}
+                                    onChange={(e) => {
+                                        setRoomCode(e.target.value.toUpperCase().slice(0, 5));
+                                        // Clear room code error when typing
+                                        if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
+                                        setRoomCodeError("");
+                                    }}
                                     onKeyDown={(e) => e.key === "Enter" && !isSubmitting && handleJoinRoom()}
                                     className="flex-1 bg-[#0a0a0a] border border-[#d4a843]/30 text-white font-vt323 text-2xl tracking-[0.2em] px-3 py-2 outline-none focus:border-[#d4a843]/70 text-center uppercase"
                                     placeholder="XXXXX"
@@ -302,7 +371,14 @@ export default function Lobby({ visible }) {
                                     ↲
                                 </button>
                             </div>
-                            {error && (
+                            {/* Stage‑specific room code error */}
+                            {roomCodeError && (
+                                <div className="font-share text-[11px] text-red-400/90 mt-2 px-2 py-1 bg-red-950/20 border-l-2 border-red-500 animate-fadeIn">
+                                    {roomCodeError}
+                                </div>
+                            )}
+                            {/* Global/server errors (only show in access stage if relevant) */}
+                            {error && step === "room" && (
                                 <div className="font-share text-[11px] text-red-400/90 mt-3 text-center bg-red-950/20 py-2 border-l-2 border-red-500">
                                     ⚠ {error}
                                 </div>

@@ -108,7 +108,7 @@ export default function GameUI({ roomCode, playerCount: initialPlayerCount }) {
         </div>
         <button
           onClick={leaveRoom}
-          className="text-white/50 hover:text-[#d4a843] text-[11px] font-share tracking-wider uppercase transition-all px-3 py-1.5 border border-white/10 hover:border-[#d4a843]/50 hover:bg-[#d4a843]/5"
+          className="text-red-500 hover:text-red-400 text-[11px] font-share tracking-wider uppercase transition-all px-3 py-1.5 border border-red-500/30 hover:border-red-400/60 hover:bg-red-500/10"
         >
           [ leave ]
         </button>
@@ -144,8 +144,8 @@ export default function GameUI({ roomCode, playerCount: initialPlayerCount }) {
               )}
               <div
                 className={`font-special text-sm mt-0.5 leading-relaxed break-words ${msg.system
-                    ? "text-white/60 italic"
-                    : "text-white/90"
+                  ? "text-white/60 italic"
+                  : "text-white/90"
                   }`}
               >
                 {msg.message}
@@ -165,8 +165,8 @@ export default function GameUI({ roomCode, playerCount: initialPlayerCount }) {
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
             className={`flex-1 bg-[#050505]/90 border text-white font-special text-sm px-3 py-2 outline-none transition-all placeholder:text-white/20 ${inputFocused
-                ? "border-[#d4a843]/70 shadow-[0_0_6px_#d4a843]/20"
-                : "border-white/10"
+              ? "border-[#d4a843]/70 shadow-[0_0_6px_#d4a843]/20"
+              : "border-white/10"
               }`}
             placeholder=">_ type message..."
             maxLength={120}
