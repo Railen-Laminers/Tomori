@@ -6,8 +6,11 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 
-// CORS origin
-const allowedOrigin = process.env.FRONTEND_URL || '*';
+// CORS origin - support both development and production
+const isDev = process.env.NODE_ENV === 'development';
+const allowedOrigin = isDev 
+    ? (process.env.DEV_FRONTEND_URL || 'http://localhost:5173')
+    : (process.env.PROD_FRONTEND_URL || '*');
 
 const io = new Server(server, {
     cors: {
