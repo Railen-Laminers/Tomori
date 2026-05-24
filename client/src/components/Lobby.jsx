@@ -1,36 +1,34 @@
 import { useState, useEffect, useRef } from "react";
 import { socket } from "../utils/socket";
+import { useSocketConnection } from "../hooks/useSocketConnection";
 
 export default function Lobby({ visible }) {
+    const isSocketConnected = useSocketConnection();
     const [step, setStep] = useState("username");
     const [username, setUsername] = useState("");
     const [roomCode, setRoomCode] = useState("");
-    const [error, setError] = useState("");        // server/global errors (still used for timeouts, etc.)
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [cursorVisible, setCursorVisible] = useState(true);
 
-    // Stage‑specific error messages
     const [nameError, setNameError] = useState("");
     const [roomCodeError, setRoomCodeError] = useState("");
 
-    // Refs for auto‑hide timeouts
     const nameErrorTimeoutRef = useRef(null);
     const roomCodeErrorTimeoutRef = useRef(null);
+    const joinLobbyTimeoutRef = useRef(null);
 
     const inputRef = useRef(null);
     const canvasRef = useRef(null);
     const prevVisibleRef = useRef(visible);
 
-    // Auto‑hide helper
     const setAutoHideError = (setter, message, timeoutRef) => {
-        // Clear previous timeout for this error type
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         setter(message);
         if (message) {
             timeoutRef.current = setTimeout(() => {
                 setter("");
                 timeoutRef.current = null;
-            }, 3000); // 3 seconds
+            }, 3000);
         }
     };
 
@@ -44,13 +42,12 @@ export default function Lobby({ visible }) {
     useEffect(() => {
         if (visible && !prevVisibleRef.current) {
             setRoomCode("");
-            setError("");
             setIsSubmitting(false);
-            // Clear stage errors when lobby reopens
             setNameError("");
             setRoomCodeError("");
             if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
             if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
+            if (joinLobbyTimeoutRef.current) clearTimeout(joinLobbyTimeoutRef.current);
         }
         prevVisibleRef.current = visible;
     }, [visible]);
@@ -130,19 +127,28 @@ export default function Lobby({ visible }) {
 
     useEffect(() => {
         const onLobbyJoined = () => {
+            if (joinLobbyTimeoutRef.current) clearTimeout(joinLobbyTimeoutRef.current);
             setIsSubmitting(false);
             setStep("room");
         };
         const onError = ({ msg }) => {
-            setError(msg);
+            if (joinLobbyTimeoutRef.current) clearTimeout(joinLobbyTimeoutRef.current);
             setIsSubmitting(false);
-            // Also clear any stage errors when a server error occurs
-            setNameError("");
-            setRoomCodeError("");
+            // Route the error to the current step’s error state
+            if (step === "username") {
+                setAutoHideError(setNameError, msg, nameErrorTimeoutRef);
+            } else {
+                setAutoHideError(setRoomCodeError, msg, roomCodeErrorTimeoutRef);
+            }
         };
         const onDisconnect = () => {
-            setError("Connection lost – please refresh the page");
             setIsSubmitting(false);
+            const msg = "⚠ Connection lost. Refresh the page.";
+            if (step === "username") {
+                setAutoHideError(setNameError, msg, nameErrorTimeoutRef);
+            } else {
+                setAutoHideError(setRoomCodeError, msg, roomCodeErrorTimeoutRef);
+            }
         };
 
         socket.on("lobby_joined", onLobbyJoined);
@@ -154,34 +160,50 @@ export default function Lobby({ visible }) {
             socket.off("error", onError);
             socket.off("disconnect", onDisconnect);
         };
-    }, []);
+    }, [step]); // re‑run when step changes so error goes to correct field
 
     const handleSetUsername = () => {
-        // Clear previous name error before validating
         if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
+        if (joinLobbyTimeoutRef.current) clearTimeout(joinLobbyTimeoutRef.current);
         setNameError("");
 
         if (!username.trim()) {
             setAutoHideError(setNameError, "⚠ A name is required.", nameErrorTimeoutRef);
             return;
         }
+
+        if (!isSocketConnected) {
+            setAutoHideError(setNameError, "⚠ Connecting to server... please wait or refresh.", nameErrorTimeoutRef);
+            return;
+        }
+
         setIsSubmitting(true);
+        joinLobbyTimeoutRef.current = setTimeout(() => {
+            if (isSubmitting) {
+                setIsSubmitting(false);
+                setAutoHideError(setNameError, "⚠ Server didn't respond. Check your connection.", nameErrorTimeoutRef);
+            }
+        }, 10000);
+
         socket.emit("join_lobby", { username: username.trim() });
     };
 
     const handleCreateRoom = () => {
+        if (!isSocketConnected) {
+            setAutoHideError(setRoomCodeError, "⚠ Not connected to server.", roomCodeErrorTimeoutRef);
+            return;
+        }
         setIsSubmitting(true);
         const timeout = setTimeout(() => {
             if (isSubmitting) {
                 setIsSubmitting(false);
-                setError("Request timed out – try again");
+                setAutoHideError(setRoomCodeError, "Request timed out – try again", roomCodeErrorTimeoutRef);
             }
         }, 10000);
         socket.emit("create_room", () => clearTimeout(timeout));
     };
 
     const handleJoinRoom = () => {
-        // Clear previous room code error
         if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
         setRoomCodeError("");
 
@@ -189,11 +211,17 @@ export default function Lobby({ visible }) {
             setAutoHideError(setRoomCodeError, "⚠ Enter a room code.", roomCodeErrorTimeoutRef);
             return;
         }
+
+        if (!isSocketConnected) {
+            setAutoHideError(setRoomCodeError, "⚠ Not connected to server.", roomCodeErrorTimeoutRef);
+            return;
+        }
+
         setIsSubmitting(true);
         const timeout = setTimeout(() => {
             if (isSubmitting) {
                 setIsSubmitting(false);
-                setError("Request timed out – try again");
+                setAutoHideError(setRoomCodeError, "Request timed out – try again", roomCodeErrorTimeoutRef);
             }
         }, 10000);
         socket.emit("join_room", { code: roomCode.toUpperCase() }, () => clearTimeout(timeout));
@@ -204,7 +232,6 @@ export default function Lobby({ visible }) {
         const suffixes = ["walker", "shade", "fox", "byte", "ghost", "rune", "spark", "void", "owl", "moth"];
         const random = `${prefixes[Math.floor(Math.random() * prefixes.length)]}_${suffixes[Math.floor(Math.random() * suffixes.length)]}${Math.floor(Math.random() * 99)}`;
         setUsername(random);
-        // Clear name error when randomizing
         if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
         setNameError("");
         if (inputRef.current) inputRef.current.focus();
@@ -213,8 +240,6 @@ export default function Lobby({ visible }) {
     const goBackToIdentity = () => {
         setStep("username");
         setRoomCode("");
-        setError("");
-        // Clear room code error when leaving access stage
         if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
         setRoomCodeError("");
     };
@@ -273,11 +298,10 @@ export default function Lobby({ visible }) {
                                     value={username}
                                     onChange={(e) => {
                                         setUsername(e.target.value);
-                                        // Clear name error when user starts typing
                                         if (nameErrorTimeoutRef.current) clearTimeout(nameErrorTimeoutRef.current);
                                         setNameError("");
                                     }}
-                                    onKeyDown={(e) => e.key === "Enter" && !isSubmitting && handleSetUsername()}
+                                    onKeyDown={(e) => e.key === "Enter" && !isSubmitting && isSocketConnected && handleSetUsername()}
                                     className="w-full bg-[#0a0a0a] border border-[#d4a843]/30 text-white font-vt323 text-xl px-4 py-2.5 outline-none focus:border-[#d4a843]/70 transition-all placeholder:text-white/10"
                                     placeholder="anonymous"
                                     maxLength={20}
@@ -288,7 +312,6 @@ export default function Lobby({ visible }) {
                                     <div className="absolute right-3 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-[#d4a843]/80 animate-pulse" />
                                 )}
                             </div>
-                            {/* Stage‑specific name error */}
                             {nameError && (
                                 <div className="font-share text-[11px] text-red-400/90 mt-2 px-2 py-1 bg-red-950/20 border-l-2 border-red-500 animate-fadeIn">
                                     {nameError}
@@ -296,21 +319,18 @@ export default function Lobby({ visible }) {
                             )}
                             <button
                                 onClick={handleSetUsername}
-                                disabled={isSubmitting}
-                                className={`w-full font-vt323 text-xl py-3 mt-6 transition-all flex items-center justify-center gap-2 ${isSubmitting ? "bg-white/5 text-white/30" : "bg-[#d4a843]/20 hover:bg-[#d4a843]/30 text-[#d4a843] border border-[#d4a843]/40 hover:border-[#d4a843]/80"}`}
+                                disabled={isSubmitting || !isSocketConnected}
+                                className={`w-full font-vt323 text-xl py-3 mt-6 transition-all flex items-center justify-center gap-2 ${(isSubmitting || !isSocketConnected) ? "bg-white/5 text-white/30" : "bg-[#d4a843]/20 hover:bg-[#d4a843]/30 text-[#d4a843] border border-[#d4a843]/40 hover:border-[#d4a843]/80"}`}
                             >
                                 {isSubmitting ? (
                                     <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-[#d4a843] rounded-full animate-spin" />
+                                ) : !isSocketConnected ? (
+                                    "⟳ CONNECTING..."
                                 ) : (
                                     "► CONNECT"
                                 )}
                             </button>
-                            {/* Global/server errors (optional, keep for timeouts etc.) */}
-                            {error && step === "username" && (
-                                <div className="font-share text-[11px] text-red-400/90 mt-3 text-center bg-red-950/20 py-2 border-l-2 border-red-500">
-                                    ⚠ {error}
-                                </div>
-                            )}
+                            {/* Global error display removed – now handled by nameError above */}
                         </div>
                     )}
 
@@ -328,11 +348,13 @@ export default function Lobby({ visible }) {
 
                             <button
                                 onClick={handleCreateRoom}
-                                disabled={isSubmitting}
-                                className={`w-full font-vt323 text-xl py-3 transition-all flex items-center justify-center gap-2 ${isSubmitting ? "bg-white/5 text-white/30" : "bg-[#d4a843]/20 hover:bg-[#d4a843]/30 text-[#d4a843] border border-[#d4a843]/40"}`}
+                                disabled={isSubmitting || !isSocketConnected}
+                                className={`w-full font-vt323 text-xl py-3 transition-all flex items-center justify-center gap-2 ${(isSubmitting || !isSocketConnected) ? "bg-white/5 text-white/30" : "bg-[#d4a843]/20 hover:bg-[#d4a843]/30 text-[#d4a843] border border-[#d4a843]/40"}`}
                             >
                                 {isSubmitting ? (
                                     <span className="inline-block w-4 h-4 border-2 border-white/30 border-t-[#d4a843] rounded-full animate-spin" />
+                                ) : !isSocketConnected ? (
+                                    "⟳ CONNECTING..."
                                 ) : (
                                     "CREATE NEW ROOM"
                                 )}
@@ -353,11 +375,10 @@ export default function Lobby({ visible }) {
                                     value={roomCode}
                                     onChange={(e) => {
                                         setRoomCode(e.target.value.toUpperCase().slice(0, 5));
-                                        // Clear room code error when typing
                                         if (roomCodeErrorTimeoutRef.current) clearTimeout(roomCodeErrorTimeoutRef.current);
                                         setRoomCodeError("");
                                     }}
-                                    onKeyDown={(e) => e.key === "Enter" && !isSubmitting && handleJoinRoom()}
+                                    onKeyDown={(e) => e.key === "Enter" && !isSubmitting && isSocketConnected && handleJoinRoom()}
                                     className="flex-1 bg-[#0a0a0a] border border-[#d4a843]/30 text-white font-vt323 text-2xl tracking-[0.2em] px-3 py-2 outline-none focus:border-[#d4a843]/70 text-center uppercase"
                                     placeholder="XXXXX"
                                     maxLength={5}
@@ -365,24 +386,18 @@ export default function Lobby({ visible }) {
                                 />
                                 <button
                                     onClick={handleJoinRoom}
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || !isSocketConnected}
                                     className="px-6 bg-[#d4a843]/20 hover:bg-[#d4a843]/30 text-[#d4a843] font-vt323 text-lg transition-all disabled:opacity-30"
                                 >
                                     ↲
                                 </button>
                             </div>
-                            {/* Stage‑specific room code error */}
                             {roomCodeError && (
                                 <div className="font-share text-[11px] text-red-400/90 mt-2 px-2 py-1 bg-red-950/20 border-l-2 border-red-500 animate-fadeIn">
                                     {roomCodeError}
                                 </div>
                             )}
-                            {/* Global/server errors (only show in access stage if relevant) */}
-                            {error && step === "room" && (
-                                <div className="font-share text-[11px] text-red-400/90 mt-3 text-center bg-red-950/20 py-2 border-l-2 border-red-500">
-                                    ⚠ {error}
-                                </div>
-                            )}
+                            {/* Global error display removed – now handled by roomCodeError above */}
                         </div>
                     )}
                 </div>
