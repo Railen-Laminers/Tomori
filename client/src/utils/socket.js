@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 
-// Prefer polling for more reliable mobile connections; WebSocket upgrade will happen if possible
+// Hmm Prefer polling for more reliable mobile connections; WebSocket upgrade will happen if possible
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "";
 
 export const socket = io(SOCKET_URL, {
